@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquareReply, SendHorizontal } from "lucide-react";
+import { MessageSquareReply, SendHorizontal, UserRoundPlus } from "lucide-react";
 import { adminApi } from "@/services/adminApi";
 import { Button } from "@/shared/components/Button";
 import { DataTable, type Column } from "@/shared/components/DataTable";
 import { SectionHeader } from "@/shared/components/SectionHeader";
 import { StatusBadge } from "@/shared/components/StatusBadge";
-import type { StatusTone, SupportTicket } from "@/shared/types";
+import type { ManagedUser, StatusTone, SupportTicket } from "@/shared/types";
 import { useSupportChat } from "@/hooks/useSupportChat";
 
 const priorityTone: Record<SupportTicket["priority"], StatusTone> = {
@@ -19,10 +19,13 @@ const priorityTone: Record<SupportTicket["priority"], StatusTone> = {
 
 export function SupportManagementPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [selected, setSelected] = useState<SupportTicket | null>(null);
   const [message, setMessage] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const { connected, joining, error, typingUser, messages, sendMessage, setTyping } = useSupportChat(selected?.socketId ?? selected?.id ?? "");
+  const chatMessages = [...(selected?.messages ?? []), ...messages].filter((chat, index, all) => all.findIndex((item) => item.id === chat.id) === index);
 
   useEffect(() => {
     adminApi.tickets()
@@ -31,6 +34,12 @@ export function SupportManagementPage() {
         setSelected(items[0] ?? null);
       })
       .catch((caught) => setLoadError(caught instanceof Error ? caught.message : "Unable to load tickets"));
+    adminApi.users()
+      .then((items) => {
+        setUsers(items);
+        setSelectedUserId((current) => current || items[0]?.id || "");
+      })
+      .catch((caught) => setLoadError(caught instanceof Error ? caught.message : "Unable to load users"));
   }, []);
 
   const columns: Column<SupportTicket>[] = [
@@ -44,15 +53,39 @@ export function SupportManagementPage() {
 
   function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!selected) return;
     sendMessage(message);
     setMessage("");
     setTyping(false);
   }
 
+  async function openUserChat(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedUserId) return;
+    try {
+      const ticket = await adminApi.openUserChat(selectedUserId);
+      setTickets((current) => [ticket, ...current.filter((item) => item.id !== ticket.id)]);
+      setSelected(ticket);
+      setLoadError(null);
+    } catch (caught) {
+      setLoadError(caught instanceof Error ? caught.message : "Unable to open user chat");
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <SectionHeader eyebrow="Support management" title="Tickets, replies, and chat queue" actions={<Button icon={<MessageSquareReply size={17} />}>Open chat console</Button>} />
+      <SectionHeader eyebrow="Support management" title="All user chats and admin replies" />
       {loadError ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{loadError}</p> : null}
+
+      <form className="panel flex flex-col gap-3 p-4 md:flex-row md:items-end" onSubmit={openUserChat}>
+        <label className="min-w-0 flex-1">
+          <span className="label mb-2 block">Start or open chat with user</span>
+          <select className="input" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
+            {users.map((user) => <option key={user.id} value={user.id}>{user.name} - {user.email}</option>)}
+          </select>
+        </label>
+        <Button type="submit" icon={<UserRoundPlus size={17} />} disabled={!selectedUserId}>Open user chat</Button>
+      </form>
 
       <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
         <DataTable
@@ -79,7 +112,7 @@ export function SupportManagementPage() {
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
-            {messages.map((chat) => {
+            {chatMessages.map((chat) => {
               const mine = chat.senderType === "admin";
               return (
                 <div key={chat.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -92,6 +125,8 @@ export function SupportManagementPage() {
                 </div>
               );
             })}
+            {selected && chatMessages.length === 0 ? <p className="text-sm font-medium text-slate-500">No messages yet. Send the first admin message to this user.</p> : null}
+            {!selected ? <p className="text-sm font-medium text-slate-500">Select a user chat to begin.</p> : null}
             {typingUser ? <p className="text-sm font-semibold text-brand">{typingUser}</p> : null}
             {error ? <p className="rounded-md bg-amber-50 p-3 text-sm font-medium text-amber-700">{error}</p> : null}
           </div>
@@ -105,9 +140,10 @@ export function SupportManagementPage() {
                 setTyping(Boolean(event.target.value));
               }}
               onBlur={() => setTyping(false)}
-              placeholder="Reply to investor"
+              placeholder={selected ? "Reply to user" : "Select a chat first"}
+              disabled={!selected}
             />
-            <Button type="submit" className="h-10 px-3" aria-label="Send live support message">
+            <Button type="submit" className="h-10 px-3" aria-label="Send live support message" disabled={!selected}>
               <SendHorizontal size={16} />
             </Button>
           </form>

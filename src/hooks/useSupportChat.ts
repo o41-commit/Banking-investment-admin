@@ -30,6 +30,10 @@ export function useSupportChat(ticketId?: string) {
 
   useEffect(() => {
     if (!ticketId) return undefined;
+    setMessages([]);
+    setTypingUser("");
+    setConnected(false);
+    setError("");
 
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
     if (!socketUrl) {

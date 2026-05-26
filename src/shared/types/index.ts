@@ -113,9 +113,17 @@ export type SupportTicket = {
   socketId?: string;
   subject: string;
   user: string;
+  userId?: string;
   priority: "low" | "medium" | "high" | "urgent";
   status: "open" | "pending" | "closed";
   lastMessageAt: string;
+  messages?: Array<{
+    id: string;
+    senderType: "user" | "admin";
+    senderName: string;
+    message: string;
+    createdAt: string;
+  }>;
 };
 
 export type SecurityEvent = {

@@ -83,6 +83,11 @@ function formatUser(user: unknown) {
   return record.name ?? record.email ?? "Unknown user";
 }
 
+function userIdOf(user: unknown) {
+  if (!user || typeof user !== "object") return undefined;
+  return idOf(user as { _id?: string; id?: string });
+}
+
 function mapMoneyRequest(item: Record<string, unknown>): MoneyRequest {
   return {
     id: idOf(item),
@@ -147,9 +152,20 @@ function mapTicket(item: Record<string, unknown>): SupportTicket {
     socketId: idOf(item),
     subject: String(item.subject ?? "Support ticket"),
     user: formatUser(item.user),
+    userId: userIdOf(item.user),
     priority: (item.priority as SupportTicket["priority"]) ?? "medium",
     status: (item.status as SupportTicket["status"]) ?? "open",
-    lastMessageAt: formatDate((messages.at(-1) as { createdAt?: string } | undefined)?.createdAt ?? item.updatedAt as string | undefined)
+    lastMessageAt: formatDate((messages.at(-1) as { createdAt?: string } | undefined)?.createdAt ?? item.updatedAt as string | undefined),
+    messages: messages.map((message) => {
+      const record = message as { _id?: string; senderType?: "user" | "admin"; message?: string; createdAt?: string };
+      return {
+        id: record._id ?? `${idOf(item)}-${record.createdAt ?? ""}`,
+        senderType: record.senderType ?? "user",
+        senderName: record.senderType === "admin" ? "Support Admin" : formatUser(item.user),
+        message: record.message ?? "",
+        createdAt: formatDate(record.createdAt)
+      };
+    })
   };
 }
 
@@ -253,6 +269,14 @@ export const adminApi = {
     return request("/plans", { method: "POST", body: JSON.stringify(input) });
   },
 
+  updatePlan(id: string, input: Record<string, unknown>) {
+    return request(`/plans/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+  },
+
+  deletePlan(id: string) {
+    return request(`/plans/${id}`, { method: "DELETE" });
+  },
+
   async deposits() {
     const result = await listRequest<Record<string, unknown>>("/deposits?limit=100");
     return result.items.map(mapMoneyRequest);
@@ -291,6 +315,11 @@ export const adminApi = {
   async tickets() {
     const result = await listRequest<Record<string, unknown>>("/support?limit=100");
     return result.items.map(mapTicket);
+  },
+
+  async openUserChat(userId: string) {
+    const ticket = await request<Record<string, unknown>>(`/support/users/${userId}/chat`, { method: "POST", body: JSON.stringify({}) });
+    return mapTicket(ticket);
   },
 
   async securityEvents() {
