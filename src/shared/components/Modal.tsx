@@ -2,16 +2,18 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { cn } from "@/shared/lib/utils";
 import { Button } from "./Button";
 
 type ModalProps = {
   open: boolean;
   title: string;
   children: React.ReactNode;
+  className?: string;
   onClose: () => void;
 };
 
-export function Modal({ open, title, children, onClose }: ModalProps) {
+export function Modal({ open, title, children, className, onClose }: ModalProps) {
   return (
     <AnimatePresence>
       {open ? (
@@ -20,7 +22,7 @@ export function Modal({ open, title, children, onClose }: ModalProps) {
             initial={{ opacity: 0, scale: 0.98, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 16 }}
-            className="panel w-full max-w-lg overflow-hidden"
+            className={cn("panel w-full max-w-lg overflow-hidden", className)}
             role="dialog"
             aria-modal="true"
           >

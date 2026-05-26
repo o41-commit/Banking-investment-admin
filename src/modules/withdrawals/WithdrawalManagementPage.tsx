@@ -33,6 +33,8 @@ export function WithdrawalManagementPage() {
 
   useEffect(() => {
     loadWithdrawals();
+    const interval = window.setInterval(loadWithdrawals, 15000);
+    return () => window.clearInterval(interval);
   }, []);
 
   const columns: Column<MoneyRequest>[] = [

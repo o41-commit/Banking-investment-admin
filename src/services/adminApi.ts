@@ -5,6 +5,7 @@ import type {
   ChartPoint,
   DashboardMetric,
   InvestmentPlan,
+  KycReviewRecord,
   ManagedUser,
   MoneyRequest,
   ReferralRow,
@@ -30,35 +31,181 @@ type ApiResponse<T> = {
 } & Partial<ApiList<T>>;
 
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api").replace(/\/$/, "");
+const adminSessionKey = "admin-session";
+const adminSessionUpdatedEvent = "admin-session-updated";
 
-function authHeader() {
-  if (typeof window === "undefined") return {};
-  const raw = window.localStorage.getItem("admin-session");
-  if (!raw) return {};
+let refreshPromise: Promise<AdminSession> | null = null;
+const defaultErrorMessage = "Something went wrong. Please try again.";
+
+function looksTechnical(message = "") {
+  const lower = message.toLowerCase();
+  return [
+    "validation failed",
+    "request failed with status",
+    "route not found",
+    "cast to objectid",
+    "e11000",
+    "duplicate key",
+    "zod",
+    "syntaxerror",
+    "internal server error",
+    "failed to fetch",
+    "networkerror"
+  ].some((pattern) => lower.includes(pattern));
+}
+
+export function friendlyMessage(message: unknown, fallback = defaultErrorMessage) {
+  const text = String(message ?? "").trim();
+  if (!text) return fallback;
+  const lower = text.toLowerCase();
+
+  if (lower.includes("invalid credentials")) return "The email or password you entered is incorrect.";
+  if (lower.includes("validation failed")) return "Please check the form fields and try again.";
+  if (lower.includes("user already exists")) return "A user with this email already exists.";
+  if (lower.includes("kyc approval")) return "KYC approval is required before this action can continue.";
+  if (lower.includes("insufficient balance")) return "The user does not have enough available balance for this action.";
+  if (lower.includes("withdrawal wallet not found")) return "The selected withdrawal wallet is missing or not verified.";
+  if (lower.includes("destination address")) return "The destination address must match a saved verified Bitcoin wallet.";
+  if (lower.includes("deposit wallet")) return "A Bitcoin deposit wallet is not configured yet.";
+  if (lower.includes("network must be bitcoin")) return "Only the Bitcoin network is supported.";
+  if (lower.includes("only bitcoin")) return "Only Bitcoin is supported on this platform.";
+  if (lower.includes("investment amount is outside")) return "The investment amount is outside the selected plan limits.";
+  if (lower.includes("session expired")) return "Your admin session has expired. Please sign in again.";
+  if (lower.includes("already reviewed")) return "This withdrawal has already been reviewed by this admin.";
+  if (lower.includes("not pending")) return "This request is no longer pending.";
+  if (lower.includes("cannot delete a plan")) return "This plan has active investments and cannot be deleted.";
+
+  return looksTechnical(text) ? fallback : text;
+}
+
+function apiErrorMessage(response: Response, payload: ApiResponse<unknown> | null, path = "") {
+  const backendMessage = payload?.message;
+  const status = response.status;
+  const lowerPath = path.toLowerCase();
+
+  if (status === 400) return friendlyMessage(backendMessage, "Please check the information and try again.");
+  if (status === 401 && lowerPath.includes("/auth/admin/login")) return "The email or password you entered is incorrect.";
+  if (status === 401) return "Please sign in again to continue.";
+  if (status === 403) return friendlyMessage(backendMessage, "You do not have permission to complete this action.");
+  if (status === 404) return friendlyMessage(backendMessage, "We could not find that record. Please refresh and try again.");
+  if (status === 409) return friendlyMessage(backendMessage, "This record has already changed. Please refresh and try again.");
+  if (status === 422) return "Please check the form fields and try again.";
+  if (status === 429) return "Too many attempts. Please wait a moment and try again.";
+  if (status >= 500) return "Something went wrong on our side. Please try again in a moment.";
+
+  return friendlyMessage(backendMessage, defaultErrorMessage);
+}
+
+function networkErrorMessage() {
+  return "We could not reach the server. Please check your connection and try again.";
+}
+
+function getStoredSession() {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(adminSessionKey);
+  if (!raw) return null;
   try {
-    const session = JSON.parse(raw) as AdminSession;
-    return session.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {};
+    return JSON.parse(raw) as AdminSession;
   } catch {
-    return {};
+    window.localStorage.removeItem(adminSessionKey);
+    return null;
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+function saveStoredSession(session: AdminSession) {
+  window.localStorage.setItem(adminSessionKey, JSON.stringify(session));
+  window.dispatchEvent(new CustomEvent(adminSessionUpdatedEvent, { detail: session }));
+}
+
+function clearStoredSession() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(adminSessionKey);
+  window.dispatchEvent(new CustomEvent(adminSessionUpdatedEvent, { detail: null }));
+}
+
+function authHeader() {
+  const session = getStoredSession();
+  return session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {};
+}
+
+async function parseResponse<T>(response: Response, path = ""): Promise<T> {
+  const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(response, payload as ApiResponse<unknown> | null, path));
+  }
+  return ((payload?.data ?? payload) as T);
+}
+
+async function fetchApi(path: string, init?: RequestInit) {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
   Object.entries(authHeader()).forEach(([key, value]) => headers.set(key, value));
 
-  const response = await fetch(`${apiUrl}${path}`, {
+  return fetch(`${apiUrl}${path}`, {
     credentials: "include",
     ...init,
     headers
   });
+}
 
-  const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
-  if (!response.ok) {
-    throw new Error(payload?.message ?? `Request failed with status ${response.status}`);
+async function refreshAdminSession() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const currentSession = getStoredSession();
+    if (!currentSession?.refreshToken) {
+      throw new Error("Admin session expired. Please sign in again.");
+    }
+
+    const response = await fetch(`${apiUrl}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: currentSession.refreshToken })
+    });
+    const tokens = await parseResponse<{ accessToken: string; refreshToken: string; sessionId?: string }>(response, "/auth/refresh");
+    const nextSession = {
+      ...currentSession,
+      id: tokens.sessionId ?? currentSession.id,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken
+    };
+    saveStoredSession(nextSession);
+    return nextSession;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+}
+
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetchApi(path, init);
+  } catch {
+    throw new Error(networkErrorMessage());
   }
-  return ((payload?.data ?? payload) as T);
+  const shouldRefresh = retry && response.status === 401 && !["/auth/admin/login", "/auth/login", "/auth/register", "/auth/refresh"].includes(path);
+  if (shouldRefresh) {
+    try {
+      await refreshAdminSession();
+    } catch {
+      clearStoredSession();
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.assign("/login");
+      }
+      throw new Error("Admin session expired. Please sign in again.");
+    }
+
+    try {
+      return request<T>(path, init, false);
+    } catch (caught) {
+      if (caught instanceof Error) throw new Error(friendlyMessage(caught.message, networkErrorMessage()));
+      throw new Error(defaultErrorMessage);
+    }
+  }
+  return parseResponse<T>(response, path);
 }
 
 async function listRequest<T>(path: string): Promise<ApiList<T>> {
@@ -93,7 +240,7 @@ function mapMoneyRequest(item: Record<string, unknown>): MoneyRequest {
     id: idOf(item),
     user: formatUser(item.user),
     amount: Number(item.amount ?? 0),
-    asset: (item.asset as MoneyRequest["asset"]) ?? "USDT",
+    asset: (item.asset as MoneyRequest["asset"]) ?? "BTC",
     status: (item.status as MoneyRequest["status"]) ?? "pending",
     txHash: item.txHash as string | undefined,
     wallet: (item.destinationAddress as string | undefined) ?? (typeof item.wallet === "string" ? item.wallet : undefined),
@@ -115,6 +262,25 @@ function mapUser(item: Record<string, unknown>): ManagedUser {
     referrals: 0,
     joinedAt: formatDate(item.createdAt as string | undefined),
     lastSeen: formatDate(item.lastLoginAt as string | undefined)
+  };
+}
+
+function mapKyc(item: Record<string, unknown>): KycReviewRecord {
+  const user = item.user && typeof item.user === "object" ? item.user as Record<string, unknown> : {};
+  const files = Array.isArray(item.files) ? item.files.map(String) : [];
+  return {
+    id: idOf(item),
+    userId: idOf(user),
+    userName: String(user.name ?? "Unknown user"),
+    userEmail: String(user.email ?? ""),
+    userStatus: user.status as KycReviewRecord["userStatus"],
+    status: (item.status as KycReviewRecord["status"]) ?? "pending",
+    documentType: String(item.documentType ?? "Document"),
+    documentNumber: String(item.documentNumber ?? ""),
+    country: String(item.country ?? ""),
+    files,
+    submittedAt: formatDate((item.submittedAt ?? item.createdAt) as string | undefined),
+    rejectionReason: item.rejectionReason as string | undefined
   };
 }
 
@@ -250,6 +416,15 @@ export const adminApi = {
   async users() {
     const result = await listRequest<Record<string, unknown>>("/users?limit=100");
     return result.items.map(mapUser);
+  },
+
+  async kycQueue() {
+    const result = await listRequest<Record<string, unknown>>("/users/kyc?limit=100");
+    return result.items.map(mapKyc);
+  },
+
+  reviewKyc(id: string, input: { status: "approved" | "rejected"; rejectionReason?: string }) {
+    return request(`/users/kyc/${id}/review`, { method: "PATCH", body: JSON.stringify(input) });
   },
 
   updateUserStatus(id: string, status: ManagedUser["status"]) {

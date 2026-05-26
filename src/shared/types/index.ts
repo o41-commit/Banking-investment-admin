@@ -73,6 +73,21 @@ export type ManagedUser = {
   lastSeen: string;
 };
 
+export type KycReviewRecord = {
+  id: string;
+  userId?: string;
+  userName: string;
+  userEmail: string;
+  userStatus?: UserStatus;
+  status: KycStatus;
+  documentType: string;
+  documentNumber: string;
+  country: string;
+  files: string[];
+  submittedAt: string;
+  rejectionReason?: string;
+};
+
 export type InvestmentPlan = {
   id: string;
   name: string;
@@ -90,7 +105,7 @@ export type MoneyRequest = {
   id: string;
   user: string;
   amount: number;
-  asset: "BTC" | "ETH" | "USDT" | "USDC";
+  asset: "BTC";
   status: TransactionStatus;
   txHash?: string;
   wallet?: string;

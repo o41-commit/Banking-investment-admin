@@ -4,9 +4,13 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
-import { adminApi } from "@/services/adminApi";
+import { adminApi, friendlyMessage } from "@/services/adminApi";
 import { Button } from "@/shared/components/Button";
 import { SessionProvider, useSession } from "@/store/sessionStore";
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -23,15 +27,37 @@ function LoginForm() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
     setError(null);
+    const trimmedEmail = email.trim();
 
+    if (!trimmedEmail) {
+      setError("Enter your admin email address.");
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setError("Enter a valid admin email address.");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (twoFactorCode && twoFactorCode.length < 6) {
+      setError("Enter the 6-digit authenticator code or leave it blank if 2FA is not enabled.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const session = await adminApi.login({ email, password, twoFactorCode: twoFactorCode || undefined });
+      const session = await adminApi.login({ email: trimmedEmail, password, twoFactorCode: twoFactorCode || undefined });
       signIn(session);
       router.push("/dashboard");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to sign in");
+      setError(friendlyMessage(caught instanceof Error ? caught.message : "", "We could not sign you in. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -50,11 +76,11 @@ function LoginForm() {
       <div className="space-y-4">
         <label className="block">
           <span className="label mb-2 block">Email</span>
-          <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
         </label>
         <label className="block">
           <span className="label mb-2 block">Password</span>
-          <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required minLength={8} />
         </label>
         <label className="block">
           <span className="label mb-2 block">Authenticator code</span>
@@ -64,6 +90,7 @@ function LoginForm() {
             maxLength={6}
             value={twoFactorCode}
             onChange={(event) => setTwoFactorCode(event.target.value)}
+            autoComplete="one-time-code"
             placeholder="123456"
           />
         </label>

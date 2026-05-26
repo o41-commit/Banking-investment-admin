@@ -33,6 +33,8 @@ export function DepositManagementPage() {
 
   useEffect(() => {
     loadDeposits();
+    const interval = window.setInterval(loadDeposits, 15000);
+    return () => window.clearInterval(interval);
   }, []);
 
   const columns: Column<MoneyRequest>[] = [

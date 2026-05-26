@@ -21,11 +21,13 @@ type DepositWallet = {
   address: string;
 };
 
-const assets = ["USDT", "USDC", "BTC", "ETH"];
+const bitcoinAsset = "BTC";
+const bitcoinNetwork = "Bitcoin";
+const bitcoinDepositKey = `platform.deposit.${bitcoinAsset}.${bitcoinNetwork}`;
 const emptyWallet: DepositWallet = {
   key: "",
-  asset: "USDT",
-  network: "TRC20",
+  asset: bitcoinAsset,
+  network: bitcoinNetwork,
   name: "",
   address: ""
 };
@@ -43,30 +45,36 @@ function walletFromSetting(setting: SettingRecord): DepositWallet | null {
   const key = String(setting.key ?? "");
   if (!key.startsWith("platform.deposit.")) return null;
 
-  const [, , asset = "USDT", network = ""] = key.split(".");
+  const [, , asset = bitcoinAsset, network = bitcoinNetwork] = key.split(".");
   const value = readValue(setting.value);
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    return {
+    const wallet = {
       key,
       asset: String(record.asset ?? asset),
       network: String(record.network ?? network),
       name: String(record.name ?? `${asset} ${network}`.trim()),
       address: String(record.address ?? "")
     };
+    return wallet.asset === bitcoinAsset && wallet.network.trim().toLowerCase() === bitcoinNetwork.toLowerCase()
+      ? { ...wallet, asset: bitcoinAsset, network: bitcoinNetwork }
+      : null;
   }
 
-  return {
+  const wallet = {
     key,
     asset,
     network,
     name: `${asset} ${network}`.trim(),
     address: typeof value === "string" ? value : ""
   };
+  return wallet.asset === bitcoinAsset && wallet.network.trim().toLowerCase() === bitcoinNetwork.toLowerCase()
+    ? { ...wallet, asset: bitcoinAsset, network: bitcoinNetwork }
+    : null;
 }
 
-function walletKey(wallet: DepositWallet) {
-  return `platform.deposit.${wallet.asset}.${wallet.network.trim().replace(/\s+/g, "-").toUpperCase()}`;
+function walletKey() {
+  return bitcoinDepositKey;
 }
 
 function displayValue(value: unknown) {
@@ -96,14 +104,14 @@ export function SettingsPage() {
 
   async function saveDepositWallet(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const key = editingWalletKey ?? walletKey(wallet);
+    const key = editingWalletKey ?? walletKey();
     try {
       await adminApi.saveSetting({
         key,
         value: {
-          name: wallet.name.trim() || `${wallet.asset} ${wallet.network}`.trim(),
-          asset: wallet.asset,
-          network: wallet.network.trim(),
+          name: wallet.name.trim() || `${bitcoinAsset} ${bitcoinNetwork}`,
+          asset: bitcoinAsset,
+          network: bitcoinNetwork,
           address: wallet.address.trim()
         }
       });
@@ -161,28 +169,27 @@ export function SettingsPage() {
                   className="input"
                   value={wallet.name}
                   onChange={(event) => setWallet((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="Main USDT wallet"
+                  placeholder="Main Bitcoin wallet"
                 />
               </label>
               <label>
                 <span className="label mb-2 block">Asset</span>
                 <select
                   className="input"
-                  value={wallet.asset}
-                  disabled={Boolean(editingWalletKey)}
-                  onChange={(event) => setWallet((current) => ({ ...current, asset: event.target.value }))}
+                  value={bitcoinAsset}
+                  disabled
+                  onChange={() => undefined}
                 >
-                  {assets.map((asset) => <option key={asset}>{asset}</option>)}
+                  <option>{bitcoinAsset}</option>
                 </select>
               </label>
               <label>
                 <span className="label mb-2 block">Network</span>
                 <input
                   className="input"
-                  value={wallet.network}
-                  disabled={Boolean(editingWalletKey)}
-                  onChange={(event) => setWallet((current) => ({ ...current, network: event.target.value }))}
-                  placeholder="TRC20"
+                  value={bitcoinNetwork}
+                  readOnly
+                  placeholder={bitcoinNetwork}
                   required
                 />
               </label>
@@ -232,7 +239,7 @@ export function SettingsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <label>
                 <span className="label mb-2 block">Key</span>
-                <input className="input" name="key" placeholder="platform.deposit.USDT.TRC20" required />
+                <input className="input" name="key" placeholder={bitcoinDepositKey} required />
               </label>
               <label>
                 <span className="label mb-2 block">Encrypted</span>

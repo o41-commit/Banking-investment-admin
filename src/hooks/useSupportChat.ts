@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { useSession } from "@/store/sessionStore";
+import { friendlyMessage } from "@/services/adminApi";
 
 type ChatMessage = {
   id: string;
@@ -14,9 +15,17 @@ type ChatMessage = {
 };
 
 function getToken(session: ReturnType<typeof useSession>["session"]) {
-  if (session?.accessToken) return session.accessToken;
   if (typeof window === "undefined") return undefined;
-  return window.localStorage.getItem("admin-access-token") ?? window.localStorage.getItem("accessToken") ?? undefined;
+  const raw = window.localStorage.getItem("admin-session");
+  if (raw) {
+    try {
+      const storedSession = JSON.parse(raw) as { accessToken?: string };
+      if (storedSession.accessToken) return storedSession.accessToken;
+    } catch {
+      window.localStorage.removeItem("admin-session");
+    }
+  }
+  return session?.accessToken;
 }
 
 export function useSupportChat(ticketId?: string) {
@@ -54,7 +63,7 @@ export function useSupportChat(ticketId?: string) {
       setConnected(true);
       socket.emit("support:join", { ticketId }, (response: { ok: boolean; error?: string }) => {
         setJoining(false);
-        if (!response?.ok) setError(response?.error ?? "Unable to join support room.");
+        if (!response?.ok) setError(friendlyMessage(response?.error, "Unable to join support room."));
       });
     });
 
@@ -96,7 +105,7 @@ export function useSupportChat(ticketId?: string) {
       }
 
       socketRef.current.emit("support:message", { ticketId, message: trimmed }, (response: { ok: boolean; error?: string }) => {
-        if (!response?.ok) setError(response?.error ?? "Unable to send message.");
+        if (!response?.ok) setError(friendlyMessage(response?.error, "Unable to send message."));
         else setError("");
       });
     },
