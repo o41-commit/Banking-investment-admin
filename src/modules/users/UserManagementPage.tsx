@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Ban, CheckCircle2, Edit3, ExternalLink, FileText, KeyRound, RefreshCw, ShieldCheck, WalletCards } from "lucide-react";
+import { Ban, CheckCircle2, Edit3, ExternalLink, FileText, KeyRound, RefreshCw, ShieldCheck, Trash2, WalletCards } from "lucide-react";
 import { adminApi } from "@/services/adminApi";
 import { Button } from "@/shared/components/Button";
 import { DataTable, type Column } from "@/shared/components/DataTable";
@@ -34,6 +34,7 @@ export function UserManagementPage() {
   const [statusFilter, setStatusFilter] = useState<UserStatus | "all">("all");
   const [kycStatusFilter, setKycStatusFilter] = useState<KycStatus | "all">("pending");
   const [kycLoading, setKycLoading] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function loadUsers() {
@@ -133,6 +134,25 @@ export function UserManagementPage() {
     }
   }
 
+  async function deleteUser(row: ManagedUser) {
+    const confirmed = window.confirm(`Delete ${row.name}? This removes the user and their account records.`);
+    if (!confirmed) return;
+
+    setDeletingUserId(row.id);
+    try {
+      await adminApi.deleteUser(row.id);
+      if (selectedUser?.id === row.id) {
+        setSelectedUser(null);
+        setBalance("");
+      }
+      loadUsers();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete user");
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
+
   function openKycQueue() {
     setKycQueueOpen(true);
     void loadKycQueue();
@@ -194,6 +214,15 @@ export function UserManagementPage() {
               onClick={() => void toggleBan(row)}
             >
               <Ban size={16} />
+            </Button>
+            <Button
+              variant="danger"
+              className="size-9 p-0"
+              aria-label="Delete user"
+              onClick={() => void deleteUser(row)}
+              disabled={deletingUserId === row.id}
+            >
+              <Trash2 size={16} />
             </Button>
           </div>
         )}

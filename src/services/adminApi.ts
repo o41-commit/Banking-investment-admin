@@ -4,6 +4,7 @@ import type {
   AdminSession,
   ChartPoint,
   DashboardMetric,
+  InvestmentRecord,
   InvestmentPlan,
   KycReviewRecord,
   ManagedUser,
@@ -62,6 +63,7 @@ export function friendlyMessage(message: unknown, fallback = defaultErrorMessage
   if (lower.includes("invalid credentials")) return "The email or password you entered is incorrect.";
   if (lower.includes("validation failed")) return "Please check the form fields and try again.";
   if (lower.includes("user already exists")) return "A user with this email already exists.";
+  if (lower.includes("admin email already exists")) return "Another admin is already using that email.";
   if (lower.includes("kyc approval")) return "KYC approval is required before this action can continue.";
   if (lower.includes("insufficient balance")) return "The user does not have enough available balance for this action.";
   if (lower.includes("withdrawal wallet not found")) return "The selected withdrawal wallet is missing or not verified.";
@@ -74,6 +76,9 @@ export function friendlyMessage(message: unknown, fallback = defaultErrorMessage
   if (lower.includes("already reviewed")) return "This withdrawal has already been reviewed by this admin.";
   if (lower.includes("not pending")) return "This request is no longer pending.";
   if (lower.includes("cannot delete a plan")) return "This plan has active investments and cannot be deleted.";
+  if (lower.includes("invest in a plan before withdrawing referral rewards")) {
+    return "Referral reward withdrawals require the user to start an investment first.";
+  }
 
   return looksTechnical(text) ? fallback : text;
 }
@@ -224,6 +229,14 @@ function formatDate(value?: string) {
   return value ? new Date(value).toLocaleString() : "Never";
 }
 
+function formatCurrencyValue(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value > 1000 ? 0 : 2
+  }).format(value);
+}
+
 function formatUser(user: unknown) {
   if (!user || typeof user !== "object") return "Unknown user";
   const record = user as { name?: string; email?: string };
@@ -289,6 +302,8 @@ function mapPlan(item: Record<string, unknown>): InvestmentPlan {
     id: idOf(item),
     name: String(item.name ?? "Untitled plan"),
     roi: Number(item.roiPercent ?? 0),
+    roiType: (item.roiType as InvestmentPlan["roiType"]) ?? "daily",
+    fixedReturnAmount: Number(item.fixedReturnAmount ?? 0),
     durationDays: Number(item.durationDays ?? 0),
     minAmount: Number(item.minAmount ?? 0),
     maxAmount: Number(item.maxAmount ?? 0),
@@ -296,6 +311,37 @@ function mapPlan(item: Record<string, unknown>): InvestmentPlan {
     enabled: Boolean(item.enabled),
     investors: 0,
     tvl: 0
+  };
+}
+
+function mapInvestment(item: Record<string, unknown>): InvestmentRecord {
+  const plan = item.plan && typeof item.plan === "object" ? item.plan as Record<string, unknown> : {};
+  const user = item.user && typeof item.user === "object" ? item.user as Record<string, unknown> : {};
+  const amount = Number(item.amount ?? 0);
+  const roiType = ((item.roiType ?? plan.roiType) as InvestmentRecord["roiType"]) ?? "daily";
+  const roiPercent = Number(item.roiPercent ?? plan.roiPercent ?? 0);
+  const fixedReturnAmount = Number(item.fixedReturnAmount ?? plan.fixedReturnAmount ?? 0);
+  const dailyReturn = roiType === "fixed" ? fixedReturnAmount : Number(((amount * roiPercent) / 100).toFixed(8));
+  const accruedProfit = Number(item.accruedProfit ?? 0);
+  const paidProfit = Number(item.paidProfit ?? 0);
+
+  return {
+    id: idOf(item),
+    user: formatUser(user),
+    userEmail: String(user.email ?? ""),
+    plan: String(plan.name ?? "Investment plan"),
+    amount,
+    asset: (item.asset as InvestmentRecord["asset"]) ?? "BTC",
+    roiType,
+    roiDisplay: roiType === "fixed" ? `${formatCurrencyValue(fixedReturnAmount)} daily` : `${roiPercent}% daily`,
+    dailyReturn,
+    accruedProfit,
+    paidProfit,
+    totalReturn: Number((amount + accruedProfit).toFixed(8)),
+    status: (item.status as InvestmentRecord["status"]) ?? "active",
+    startsAt: formatDate(item.startsAt as string | undefined),
+    maturesAt: formatDate(item.maturesAt as string | undefined),
+    createdAt: formatDate(item.createdAt as string | undefined)
   };
 }
 
@@ -385,6 +431,34 @@ export const adminApi = {
     return request("/auth/logout", { method: "POST" });
   },
 
+  me() {
+    return request<Record<string, unknown>>("/admin/me");
+  },
+
+  async updateMyProfile(input: { name?: string; email?: string }) {
+    const profile = await request<Record<string, unknown>>("/admin/me", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+    const current = getStoredSession();
+    if (current) {
+      saveStoredSession({
+        ...current,
+        name: String(profile.name ?? current.name ?? ""),
+        email: String(profile.email ?? current.email ?? "")
+      });
+    }
+    return profile;
+  },
+
+  async changePassword(input: { currentPassword: string; newPassword: string }) {
+    await request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+    clearStoredSession();
+  },
+
   async dashboard(): Promise<{ metrics: DashboardMetric[]; chartPoints: ChartPoint[]; activities: Activity[] }> {
     const [overview, daily, logs] = await Promise.all([
       request<{
@@ -431,6 +505,10 @@ export const adminApi = {
     return request(`/users/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
   },
 
+  deleteUser(id: string) {
+    return request(`/users/${id}`, { method: "DELETE" });
+  },
+
   editUserBalance(id: string, input: { asset: string; amount: number; reason: string }) {
     return request(`/users/${id}/balance`, { method: "PATCH", body: JSON.stringify(input) });
   },
@@ -438,6 +516,11 @@ export const adminApi = {
   async plans() {
     const items = await request<Record<string, unknown>[]>("/plans?includeDisabled=true");
     return items.map(mapPlan);
+  },
+
+  async investments() {
+    const result = await listRequest<Record<string, unknown>>("/investments?limit=100");
+    return result.items.map(mapInvestment);
   },
 
   createPlan(input: Record<string, unknown>) {
@@ -503,7 +586,7 @@ export const adminApi = {
   },
 
   broadcast(input: { title: string; message: string; audience: string; channels: string[] }) {
-    return request("/notifications/broadcast", { method: "POST", body: JSON.stringify(input) });
+    return request<{ audience: string; delivered: number }>("/notifications/broadcast", { method: "POST", body: JSON.stringify(input) });
   },
 
   async settings() {

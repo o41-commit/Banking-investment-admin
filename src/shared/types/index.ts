@@ -27,6 +27,8 @@ export type TransactionStatus = "pending" | "approved" | "rejected" | "paid" | "
 export type AdminSession = {
   id: string;
   adminId: string;
+  name?: string;
+  email?: string;
   role: AdminRole;
   permissions: Permission[];
   expiresAt: string;
@@ -92,6 +94,8 @@ export type InvestmentPlan = {
   id: string;
   name: string;
   roi: number;
+  roiType: "daily" | "fixed";
+  fixedReturnAmount: number;
   durationDays: number;
   minAmount: number;
   maxAmount: number;
@@ -99,6 +103,25 @@ export type InvestmentPlan = {
   enabled: boolean;
   investors: number;
   tvl: number;
+};
+
+export type InvestmentRecord = {
+  id: string;
+  user: string;
+  userEmail: string;
+  plan: string;
+  amount: number;
+  asset: "BTC";
+  roiType: "daily" | "fixed";
+  roiDisplay: string;
+  dailyReturn: number;
+  accruedProfit: number;
+  paidProfit: number;
+  totalReturn: number;
+  status: "active" | "matured" | "cancelled";
+  startsAt: string;
+  maturesAt: string;
+  createdAt: string;
 };
 
 export type MoneyRequest = {

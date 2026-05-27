@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, Mail, Megaphone, SendHorizontal, Smartphone } from "lucide-react";
+import { BellRing, Loader2, Mail, Megaphone, SendHorizontal, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { adminApi } from "@/services/adminApi";
 import { Button } from "@/shared/components/Button";
@@ -9,25 +9,37 @@ import { StatusBadge } from "@/shared/components/StatusBadge";
 
 export function NotificationCenterPage() {
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [delivery, setDelivery] = useState<{ audience: string; delivered: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function broadcast(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    if (sending) return;
+
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const channel = String(form.get("channel") ?? "in_app");
+    setSending(true);
+    setSent(false);
+    setDelivery(null);
+    setError(null);
+
     try {
-      await adminApi.broadcast({
+      const result = await adminApi.broadcast({
         audience: String(form.get("audience") ?? "all"),
         channels: channel === "all" ? ["in_app", "email"] : [channel],
         title: String(form.get("title") ?? ""),
         message: String(form.get("message") ?? "")
       });
+      setDelivery(result);
       setSent(true);
-      setError(null);
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (caught) {
       setSent(false);
       setError(caught instanceof Error ? caught.message : "Unable to broadcast message");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -63,8 +75,19 @@ export function NotificationCenterPage() {
             <span className="label mb-2 block">Message</span>
             <textarea className="input min-h-40 py-3" name="message" required placeholder="Write announcement" />
           </label>
-          <Button type="submit" className="mt-4" icon={<SendHorizontal size={17} />}>Broadcast message</Button>
-          {sent ? <p className="mt-3 text-sm font-medium text-positive">Broadcast queued for delivery.</p> : null}
+          <Button
+            type="submit"
+            className="mt-4"
+            disabled={sending}
+            icon={sending ? <Loader2 size={17} className="animate-spin" /> : <SendHorizontal size={17} />}
+          >
+            {sending ? "Sending..." : "Broadcast message"}
+          </Button>
+          {sent ? (
+            <p className="mt-3 text-sm font-medium text-positive">
+              Broadcast delivered to {delivery?.delivered.toLocaleString() ?? 0} user{delivery?.delivered === 1 ? "" : "s"}.
+            </p>
+          ) : null}
           {error ? <p className="mt-3 text-sm font-medium text-red-700">{error}</p> : null}
         </form>
         <aside className="space-y-3">

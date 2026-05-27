@@ -15,6 +15,7 @@ export function PlanManagementPage() {
   const [plans, setPlans] = useState<InvestmentPlan[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<InvestmentPlan | null>(null);
+  const [roiType, setRoiType] = useState<InvestmentPlan["roiType"]>("daily");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [actionPlanId, setActionPlanId] = useState<string | null>(null);
@@ -32,12 +33,14 @@ export function PlanManagementPage() {
   function openCreateModal() {
     setError(null);
     setEditingPlan(null);
+    setRoiType("daily");
     setModalOpen(true);
   }
 
   function openEditModal(plan: InvestmentPlan) {
     setError(null);
     setEditingPlan(plan);
+    setRoiType(plan.roiType ?? "daily");
     setModalOpen(true);
   }
 
@@ -49,27 +52,43 @@ export function PlanManagementPage() {
 
   const columns: Column<InvestmentPlan>[] = [
     { key: "name", header: "Plan", sortable: true },
-    { key: "roi", header: "Daily ROI", sortable: true, render: (row) => `${row.roi}%` },
+    {
+      key: "roi",
+      header: "Return",
+      sortable: true,
+      render: (row) => row.roiType === "fixed" ? `${formatCurrency(row.fixedReturnAmount)} daily` : `${row.roi}% daily`
+    },
     { key: "durationDays", header: "Duration", render: (row) => `${row.durationDays} days` },
     {
       key: "minAmount",
       header: "Min / Max",
       render: (row) => `${formatCurrency(row.minAmount)} - ${formatCurrency(row.maxAmount)}`
     },
-    { key: "compounding", header: "Compounding", render: (row) => <StatusBadge tone={row.compounding ? "info" : "neutral"}>{row.compounding ? "Enabled" : "Fixed"}</StatusBadge> },
+    {
+      key: "compounding",
+      header: "ROI type",
+      render: (row) => (
+        <StatusBadge tone={row.roiType === "fixed" ? "neutral" : "info"}>
+          {row.roiType === "fixed" ? "Fixed amount" : "Percentage"}
+        </StatusBadge>
+      )
+    },
     { key: "enabled", header: "Status", render: (row) => <StatusBadge tone={row.enabled ? "success" : "neutral"}>{row.enabled ? "Live" : "Disabled"}</StatusBadge> },
     { key: "investors", header: "Investors", sortable: true },
     { key: "tvl", header: "TVL", render: (row) => formatCurrency(row.tvl) }
   ];
 
   function planPayload(form: FormData) {
+    const nextRoiType = String(form.get("roiType") ?? "daily") as InvestmentPlan["roiType"];
     return {
       name: String(form.get("name") ?? "").trim(),
-      roiPercent: Number(form.get("roiPercent") ?? 0),
+      roiPercent: nextRoiType === "daily" ? Number(form.get("roiPercent") ?? 0) : 0,
+      roiType: nextRoiType,
+      fixedReturnAmount: nextRoiType === "fixed" ? Number(form.get("fixedReturnAmount") ?? 0) : 0,
       durationDays: Number(form.get("durationDays") ?? 0),
       minAmount: Number(form.get("minAmount") ?? 0),
       maxAmount: Number(form.get("maxAmount") ?? 0),
-      compoundingEnabled: form.get("compoundingEnabled") === "true",
+      compoundingEnabled: false,
       enabled: form.get("enabled") === "true"
     };
   }
@@ -176,9 +195,23 @@ export function PlanManagementPage() {
             <input className="input" name="name" defaultValue={editingPlan?.name ?? ""} required />
           </label>
           <label>
-            <span className="label mb-2 block">Daily ROI</span>
-            <input className="input" name="roiPercent" type="number" step="0.01" defaultValue={editingPlan?.roi ?? ""} required />
+            <span className="label mb-2 block">Daily ROI type</span>
+            <select className="input" name="roiType" value={roiType} onChange={(event) => setRoiType(event.target.value as InvestmentPlan["roiType"])}>
+              <option value="daily">Percentage</option>
+              <option value="fixed">Fixed amount</option>
+            </select>
           </label>
+          {roiType === "daily" ? (
+            <label>
+              <span className="label mb-2 block">Daily ROI percentage</span>
+              <input className="input" name="roiPercent" type="number" step="0.01" min="0" defaultValue={editingPlan?.roi ?? ""} required />
+            </label>
+          ) : (
+            <label>
+              <span className="label mb-2 block">Daily ROI fixed amount</span>
+              <input className="input" name="fixedReturnAmount" type="number" step="0.01" min="0" defaultValue={editingPlan?.fixedReturnAmount || ""} required />
+            </label>
+          )}
           <label>
             <span className="label mb-2 block">Duration</span>
             <input className="input" name="durationDays" type="number" defaultValue={editingPlan?.durationDays ?? ""} required />
@@ -190,13 +223,6 @@ export function PlanManagementPage() {
           <label>
             <span className="label mb-2 block">Maximum investment</span>
             <input className="input" name="maxAmount" type="number" defaultValue={editingPlan?.maxAmount ?? ""} required />
-          </label>
-          <label>
-            <span className="label mb-2 block">Compounding</span>
-            <select className="input" name="compoundingEnabled" defaultValue={String(editingPlan?.compounding ?? true)}>
-              <option value="true">Enabled</option>
-              <option value="false">Fixed ROI</option>
-            </select>
           </label>
           <label>
             <span className="label mb-2 block">Status</span>

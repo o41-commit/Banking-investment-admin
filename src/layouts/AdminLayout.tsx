@@ -34,6 +34,7 @@ const navItems = [
   { href: "/dashboard", label: "Overview", icon: Gauge },
   { href: "/users", label: "Users", icon: Users },
   { href: "/plans", label: "Investment Plans", icon: Layers3 },
+  { href: "/investments", label: "Investments", icon: ChartCandlestick },
   { href: "/deposits", label: "Deposits", icon: Wallet },
   { href: "/withdrawals", label: "Withdrawals", icon: HandCoins },
   { href: "/referrals", label: "Referrals", icon: ReceiptText },

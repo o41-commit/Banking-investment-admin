@@ -1,10 +1,11 @@
 "use client";
 
-import { Edit3, Save, ShieldCheck, WalletCards, X } from "lucide-react";
+import { Edit3, KeyRound, Save, ShieldCheck, UserRoundCog, WalletCards, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { adminApi } from "@/services/adminApi";
 import { Button } from "@/shared/components/Button";
 import { SectionHeader } from "@/shared/components/SectionHeader";
+import { useSession } from "@/store/sessionStore";
 
 type SettingRecord = {
   _id?: string;
@@ -84,8 +85,13 @@ function displayValue(value: unknown) {
 }
 
 export function SettingsPage() {
+  const { signOut } = useSession();
   const [settings, setSettings] = useState<SettingRecord[]>([]);
   const [wallet, setWallet] = useState<DepositWallet>(emptyWallet);
+  const [profile, setProfile] = useState({ name: "", email: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [password, setPassword] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [editingWalletKey, setEditingWalletKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -95,7 +101,15 @@ export function SettingsPage() {
   const otherSettings = settings.filter((setting) => !String(setting.key ?? "").startsWith("platform.deposit."));
 
   useEffect(() => {
-    adminApi.settings().then(setSettings).catch((caught) => setMessage(caught instanceof Error ? caught.message : "Unable to load settings"));
+    Promise.all([adminApi.settings(), adminApi.me()])
+      .then(([nextSettings, admin]) => {
+        setSettings(nextSettings);
+        setProfile({
+          name: String(admin.name ?? ""),
+          email: String(admin.email ?? "")
+        });
+      })
+      .catch((caught) => setMessage(caught instanceof Error ? caught.message : "Unable to load settings"));
   }, []);
 
   async function reloadSettings() {
@@ -135,6 +149,48 @@ export function SettingsPage() {
     setEditingWalletKey(null);
   }
 
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProfileSaving(true);
+    try {
+      const admin = await adminApi.updateMyProfile({
+        name: profile.name.trim(),
+        email: profile.email.trim()
+      });
+      setProfile({
+        name: String(admin.name ?? profile.name),
+        email: String(admin.email ?? profile.email)
+      });
+      setMessage("Admin profile updated.");
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Unable to update admin profile");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function savePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password.newPassword !== password.confirmPassword) {
+      setMessage("New password and confirmation must match.");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await adminApi.changePassword({
+        currentPassword: password.currentPassword,
+        newPassword: password.newPassword
+      });
+      setPassword({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setMessage("Password changed. Please sign in again.");
+      signOut();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Unable to change password");
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
   async function saveSetting(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -156,6 +212,82 @@ export function SettingsPage() {
     <div className="space-y-6">
       <SectionHeader eyebrow="Settings" title="Site, wallets, APIs, maintenance, security, and Resend" />
       {message ? <p className="rounded-md bg-slate-50 p-3 text-sm font-semibold text-slate-700">{message}</p> : null}
+      <section className="grid gap-4 xl:grid-cols-2">
+        <form className="panel p-5" onSubmit={saveProfile}>
+          <div className="mb-4 flex items-center gap-2">
+            <UserRoundCog size={18} className="text-brand" />
+            <h2 className="text-lg font-semibold text-ink">Admin profile</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label>
+              <span className="label mb-2 block">Name</span>
+              <input
+                className="input"
+                value={profile.name}
+                onChange={(event) => setProfile((current) => ({ ...current, name: event.target.value }))}
+                required
+              />
+            </label>
+            <label>
+              <span className="label mb-2 block">Email</span>
+              <input
+                className="input"
+                type="email"
+                value={profile.email}
+                onChange={(event) => setProfile((current) => ({ ...current, email: event.target.value }))}
+                required
+              />
+            </label>
+          </div>
+          <Button type="submit" className="mt-4" icon={<Save size={17} />} disabled={profileSaving}>
+            {profileSaving ? "Saving..." : "Save profile"}
+          </Button>
+        </form>
+
+        <form className="panel p-5" onSubmit={savePassword}>
+          <div className="mb-4 flex items-center gap-2">
+            <KeyRound size={18} className="text-brand" />
+            <h2 className="text-lg font-semibold text-ink">Change password</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label>
+              <span className="label mb-2 block">Current password</span>
+              <input
+                className="input"
+                type="password"
+                value={password.currentPassword}
+                onChange={(event) => setPassword((current) => ({ ...current, currentPassword: event.target.value }))}
+                required
+              />
+            </label>
+            <label>
+              <span className="label mb-2 block">New password</span>
+              <input
+                className="input"
+                type="password"
+                minLength={8}
+                value={password.newPassword}
+                onChange={(event) => setPassword((current) => ({ ...current, newPassword: event.target.value }))}
+                required
+              />
+            </label>
+            <label>
+              <span className="label mb-2 block">Confirm password</span>
+              <input
+                className="input"
+                type="password"
+                minLength={8}
+                value={password.confirmPassword}
+                onChange={(event) => setPassword((current) => ({ ...current, confirmPassword: event.target.value }))}
+                required
+              />
+            </label>
+          </div>
+          <Button type="submit" className="mt-4" icon={<KeyRound size={17} />} disabled={passwordSaving}>
+            {passwordSaving ? "Changing..." : "Change password"}
+          </Button>
+        </form>
+      </section>
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <form className="panel p-5" onSubmit={saveDepositWallet}>
             <div className="mb-4 flex items-center gap-2">
