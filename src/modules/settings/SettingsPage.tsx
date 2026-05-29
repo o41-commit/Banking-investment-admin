@@ -1,6 +1,6 @@
 "use client";
 
-import { Edit3, KeyRound, Save, ShieldCheck, UserRoundCog, WalletCards, X } from "lucide-react";
+import { Edit3, KeyRound, Save, ShieldCheck, Trash2, UserRoundCog, WalletCards, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { adminApi } from "@/services/adminApi";
 import { Button } from "@/shared/components/Button";
@@ -93,6 +93,7 @@ export function SettingsPage() {
   const [password, setPassword] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [editingWalletKey, setEditingWalletKey] = useState<string | null>(null);
+  const [deletingWalletKey, setDeletingWalletKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const depositWallets = settings
@@ -147,6 +148,26 @@ export function SettingsPage() {
   function cancelWalletEdit() {
     setWallet(emptyWallet);
     setEditingWalletKey(null);
+  }
+
+  async function deleteWallet(nextWallet: DepositWallet) {
+    const confirmed = window.confirm(`Delete "${nextWallet.name}"? Users will no longer see this deposit wallet.`);
+    if (!confirmed) return;
+
+    setDeletingWalletKey(nextWallet.key);
+    setMessage(null);
+    try {
+      await adminApi.deleteSetting(nextWallet.key);
+      if (editingWalletKey === nextWallet.key) {
+        cancelWalletEdit();
+      }
+      setMessage("Deposit wallet deleted.");
+      await reloadSettings();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Unable to delete deposit wallet");
+    } finally {
+      setDeletingWalletKey(null);
+    }
   }
 
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -355,7 +376,17 @@ export function SettingsPage() {
                     <p className="mt-1 text-sm text-slate-500">{item.asset} on {item.network}</p>
                     <p className="mt-2 break-all font-mono text-sm text-slate-600">{item.address || "No address saved"}</p>
                   </div>
-                  <Button variant="secondary" icon={<Edit3 size={16} />} onClick={() => editWallet(item)}>Edit</Button>
+                  <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                    <Button variant="secondary" icon={<Edit3 size={16} />} onClick={() => editWallet(item)}>Edit</Button>
+                    <Button
+                      variant="danger"
+                      icon={<Trash2 size={16} />}
+                      onClick={() => void deleteWallet(item)}
+                      disabled={deletingWalletKey === item.key}
+                    >
+                      {deletingWalletKey === item.key ? "Deleting..." : "Delete"}
+                    </Button>
+                  </div>
                 </div>
               ))}
               {depositWallets.length === 0 ? <p className="p-4 text-sm text-slate-500">No deposit wallets saved yet.</p> : null}

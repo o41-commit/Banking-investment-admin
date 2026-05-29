@@ -595,5 +595,9 @@ export const adminApi = {
 
   saveSetting(input: { key: string; value: unknown; encrypted?: boolean }) {
     return request("/settings", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  deleteSetting(key: string) {
+    return request(`/settings/${encodeURIComponent(key)}`, { method: "DELETE" });
   }
 };
