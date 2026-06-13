@@ -9,14 +9,18 @@ import { Modal } from "@/shared/components/Modal";
 import { SectionHeader } from "@/shared/components/SectionHeader";
 import { StatusBadge } from "@/shared/components/StatusBadge";
 import { formatCurrency } from "@/shared/lib/utils";
-import type { MoneyRequest, StatusTone, TransactionStatus } from "@/shared/types";
+import type {
+  MoneyRequest,
+  StatusTone,
+  TransactionStatus,
+} from "@/shared/types";
 
 const statusTone: Record<TransactionStatus, StatusTone> = {
   pending: "warning",
   approved: "success",
   rejected: "danger",
   paid: "success",
-  failed: "danger"
+  failed: "danger",
 };
 
 export function DepositManagementPage() {
@@ -26,9 +30,14 @@ export function DepositManagementPage() {
   const [error, setError] = useState<string | null>(null);
 
   function loadDeposits() {
-    adminApi.deposits()
+    adminApi
+      .deposits()
       .then(setRows)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load deposits"));
+      .catch((caught) =>
+        setError(
+          caught instanceof Error ? caught.message : "Unable to load deposits",
+        ),
+      );
   }
 
   useEffect(() => {
@@ -40,12 +49,90 @@ export function DepositManagementPage() {
   const columns: Column<MoneyRequest>[] = [
     { key: "id", header: "Deposit ID", sortable: true },
     { key: "user", header: "User", sortable: true },
-    { key: "amount", header: "Amount", sortable: true, render: (row) => `${formatCurrency(row.amount)} ${row.asset}` },
-    { key: "txHash", header: "Transaction hash", render: (row) => row.txHash ?? "Pending upload" },
-    { key: "riskScore", header: "Risk", sortable: true, render: (row) => <StatusBadge tone={row.riskScore > 70 ? "danger" : row.riskScore > 35 ? "warning" : "success"}>{row.riskScore}/100</StatusBadge> },
-    { key: "status", header: "Status", render: (row) => <StatusBadge tone={statusTone[row.status]}>{row.status}</StatusBadge> },
-    { key: "createdAt", header: "Submitted" }
+    {
+      key: "amount",
+      header: "Amount",
+      sortable: true,
+      render: (row) => `${formatCurrency(row.amount)} ${row.asset}`,
+    },
+    {
+      key: "txHash",
+      header: "Transaction hash",
+      render: (row) => row.txHash ?? "Pending upload",
+    },
+    {
+      key: "riskScore",
+      header: "Risk",
+      sortable: true,
+      render: (row) => (
+        <StatusBadge
+          tone={
+            row.riskScore > 70
+              ? "danger"
+              : row.riskScore > 35
+                ? "warning"
+                : "success"
+          }
+        >
+          {row.riskScore}/100
+        </StatusBadge>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (row) => (
+        <StatusBadge tone={statusTone[row.status]}>{row.status}</StatusBadge>
+      ),
+    },
+    { key: "createdAt", header: "Submitted" },
   ];
+
+  function downloadCsv(headers: string[], rows: string[][], filename: string) {
+    const csvContent = [headers, ...rows]
+      .map((row) =>
+        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.setAttribute("download", filename);
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportDeposits() {
+    if (rows.length === 0) return;
+
+    const headers = [
+      "Deposit ID",
+      "User",
+      "Amount",
+      "Asset",
+      "Transaction hash",
+      "Risk score",
+      "Status",
+      "Submitted",
+    ];
+
+    const csvRows = rows.map((row) => [
+      row.id,
+      row.user,
+      `${formatCurrency(row.amount)} ${row.asset}`,
+      row.asset,
+      row.txHash ?? "Pending upload",
+      `${row.riskScore}/100`,
+      row.status,
+      row.createdAt,
+    ]);
+
+    downloadCsv(headers, csvRows, "deposits.csv");
+  }
 
   async function setStatus(row: MoneyRequest, status: TransactionStatus) {
     setError(null);
@@ -56,7 +143,9 @@ export function DepositManagementPage() {
       setNote("");
       loadDeposits();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update deposit");
+      setError(
+        caught instanceof Error ? caught.message : "Unable to update deposit",
+      );
     }
   }
 
@@ -65,30 +154,65 @@ export function DepositManagementPage() {
       <SectionHeader
         eyebrow="Deposit management"
         title="Review hashes, notes, approvals, and deposit statistics"
-        actions={<Button variant="secondary" icon={<FileText size={17} />}>Export deposits</Button>}
+        actions={
+          <Button
+            variant="secondary"
+            icon={<FileText size={17} />}
+            onClick={exportDeposits}
+          >
+            Export deposits
+          </Button>
+        }
       />
-      {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
+      {error ? (
+        <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
+          {error}
+        </p>
+      ) : null}
       <DataTable
         rows={rows}
         columns={columns}
         searchPlaceholder="Search deposits by user, hash, asset, status"
         rowActions={(row) => (
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" className="size-9 p-0" aria-label="Approve deposit" onClick={() => void setStatus(row, "approved")}>
+            <Button
+              variant="ghost"
+              className="size-9 p-0"
+              aria-label="Approve deposit"
+              onClick={() => void setStatus(row, "approved")}
+            >
               <CheckCircle2 size={16} />
             </Button>
-            <Button variant="ghost" className="size-9 p-0 text-danger" aria-label="Reject deposit" onClick={() => setSelected(row)}>
+            <Button
+              variant="ghost"
+              className="size-9 p-0 text-danger"
+              aria-label="Reject deposit"
+              onClick={() => setSelected(row)}
+            >
               <XCircle size={16} />
             </Button>
           </div>
         )}
       />
-      <Modal open={Boolean(selected)} title="Reject deposit" onClose={() => setSelected(null)}>
+      <Modal
+        open={Boolean(selected)}
+        title="Reject deposit"
+        onClose={() => setSelected(null)}
+      >
         <label>
           <span className="label mb-2 block">Admin note</span>
-          <textarea className="input min-h-28 py-3" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain rejection reason for audit logs" />
+          <textarea
+            className="input min-h-28 py-3"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Explain rejection reason for audit logs"
+          />
         </label>
-        <Button className="mt-4 w-full" variant="danger" onClick={() => selected && void setStatus(selected, "rejected")}>
+        <Button
+          className="mt-4 w-full"
+          variant="danger"
+          onClick={() => selected && void setStatus(selected, "rejected")}
+        >
           Reject deposit
         </Button>
       </Modal>
