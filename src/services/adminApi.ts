@@ -1,138 +1,32 @@
 import { z } from "zod";
-import type {
-  Activity,
-  AdminSession,
-  ChartPoint,
-  DashboardMetric,
-  InvestmentRecord,
-  InvestmentPlan,
-  KycReviewRecord,
-  ManagedUser,
-  MoneyRequest,
-  ReferralRow,
-  SecurityEvent,
-  SupportTicket
-} from "@/shared/types";
+import type { Activity, AdminSession, ChartPoint, DashboardMetric, InvestmentRecord, InvestmentPlan, KycReviewRecord, ManagedUser, MoneyRequest, ReferralRow, SecurityEvent, SupportTicket } from "@/shared/types";
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  twoFactorCode: z.string().min(6).optional()
-});
-
+const loginSchema = z.object({ email: z.string().email(), password: z.string().min(8), twoFactorCode: z.string().min(6).optional() });
 type ApiList<T> = { items: T[]; total: number };
 type ApiResponse<T> = { success?: boolean; data?: T; message?: string } & Partial<ApiList<T>>;
-
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api").replace(/\/$/, "");
 const adminSessionKey = "admin-session";
 const adminSessionUpdatedEvent = "admin-session-updated";
 let refreshPromise: Promise<AdminSession> | null = null;
 const defaultErrorMessage = "Something went wrong. Please try again.";
-
-function looksTechnical(message = "") {
-  const lower = message.toLowerCase();
-  return ["validation failed", "request failed with status", "route not found", "cast to objectid", "e11000", "duplicate key", "zod", "syntaxerror", "internal server error", "failed to fetch", "networkerror"].some((pattern) => lower.includes(pattern));
-}
-
-export function friendlyMessage(message: unknown, fallback = defaultErrorMessage) {
-  const text = String(message ?? "").trim();
-  if (!text) return fallback;
-  const lower = text.toLowerCase();
-  if (lower.includes("invalid credentials")) return "The email or password you entered is incorrect.";
-  if (lower.includes("validation failed")) return "Please check the form fields and try again.";
-  if (lower.includes("user already exists")) return "A user with this email already exists.";
-  if (lower.includes("admin email already exists")) return "Another admin is already using that email.";
-  if (lower.includes("kyc approval")) return "KYC approval is required before this action can continue.";
-  if (lower.includes("insufficient balance")) return "The user does not have enough available balance for this action.";
-  if (lower.includes("withdrawal wallet not found")) return "The selected withdrawal wallet is missing or not verified.";
-  if (lower.includes("destination address")) return "The destination address must match a saved verified Bitcoin wallet.";
-  if (lower.includes("deposit wallet")) return "A Bitcoin deposit wallet is not configured yet.";
-  if (lower.includes("network must be bitcoin")) return "Only the Bitcoin network is supported.";
-  if (lower.includes("only bitcoin")) return "Only Bitcoin is supported on this platform.";
-  if (lower.includes("investment amount is outside")) return "The investment amount is outside the selected plan limits.";
-  if (lower.includes("session expired")) return "Your admin session has expired. Please sign in again.";
-  if (lower.includes("already reviewed")) return "This withdrawal has already been reviewed by this admin.";
-  if (lower.includes("not pending")) return "This request is no longer pending.";
-  if (lower.includes("cannot delete a plan")) return "This plan has active investments and cannot be deleted.";
-  if (lower.includes("invest in a plan before withdrawing referral rewards")) return "Referral reward withdrawals require the user to start an investment first.";
-  return looksTechnical(text) ? fallback : text;
-}
-
-function apiErrorMessage(response: Response, payload: ApiResponse<unknown> | null, path = "") {
-  const backendMessage = payload?.message;
-  const status = response.status;
-  const lowerPath = path.toLowerCase();
-  if (status === 400) return friendlyMessage(backendMessage, "Please check the information and try again.");
-  if (status === 401 && lowerPath.includes("/auth/admin/login")) return "The email or password you entered is incorrect.";
-  if (status === 401) return "Please sign in again to continue.";
-  if (status === 403) return friendlyMessage(backendMessage, "You do not have permission to complete this action.");
-  if (status === 404) return friendlyMessage(backendMessage, "We could not find that record. Please refresh and try again.");
-  if (status === 409) return friendlyMessage(backendMessage, "This record has already changed. Please refresh and try again.");
-  if (status === 422) return "Please check the form fields and try again.";
-  if (status === 429) return "Too many attempts. Please wait a moment and try again.";
-  if (status >= 500) return "Something went wrong on our side. Please try again in a moment.";
-  return friendlyMessage(backendMessage, defaultErrorMessage);
-}
-
+function looksTechnical(message = "") { const lower = message.toLowerCase(); return ["validation failed", "request failed with status", "route not found", "cast to objectid", "e11000", "duplicate key", "zod", "syntaxerror", "internal server error", "failed to fetch", "networkerror"].some((pattern) => lower.includes(pattern)); }
+export function friendlyMessage(message: unknown, fallback = defaultErrorMessage) { const text = String(message ?? "").trim(); if (!text) return fallback; const lower = text.toLowerCase(); if (lower.includes("invalid credentials")) return "The email or password you entered is incorrect."; if (lower.includes("validation failed")) return "Please check the form fields and try again."; if (lower.includes("user already exists")) return "A user with this email already exists."; if (lower.includes("admin email already exists")) return "Another admin is already using that email."; if (lower.includes("kyc approval")) return "KYC approval is required before this action can continue."; if (lower.includes("insufficient balance")) return "The user does not have enough available balance for this action."; if (lower.includes("withdrawal wallet not found")) return "The selected withdrawal wallet is missing or not verified."; if (lower.includes("destination address")) return "The destination address must match a saved verified Bitcoin wallet."; if (lower.includes("deposit wallet")) return "A Bitcoin deposit wallet is not configured yet."; if (lower.includes("network must be bitcoin")) return "Only the Bitcoin network is supported."; if (lower.includes("only bitcoin")) return "Only Bitcoin is supported on this platform."; if (lower.includes("investment amount is outside")) return "The investment amount is outside the selected plan limits."; if (lower.includes("session expired")) return "Your admin session has expired. Please sign in again."; if (lower.includes("already reviewed")) return "This withdrawal has already been reviewed by this admin."; if (lower.includes("not pending")) return "This request is no longer pending."; if (lower.includes("cannot delete a plan")) return "This plan has active investments and cannot be deleted."; if (lower.includes("invest in a plan before withdrawing referral rewards")) return "Referral reward withdrawals require the user to start an investment first."; return looksTechnical(text) ? fallback : text; }
+function apiErrorMessage(response: Response, payload: ApiResponse<unknown> | null, path = "") { const backendMessage = payload?.message; const status = response.status; const lowerPath = path.toLowerCase(); if (status === 400) return friendlyMessage(backendMessage, "Please check the information and try again."); if (status === 401 && lowerPath.includes("/auth/admin/login")) return "The email or password you entered is incorrect."; if (status === 401) return "Please sign in again to continue."; if (status === 403) return friendlyMessage(backendMessage, "You do not have permission to complete this action."); if (status === 404) return friendlyMessage(backendMessage, "We could not find that record. Please refresh and try again."); if (status === 409) return friendlyMessage(backendMessage, "This record has already changed. Please refresh and try again."); if (status === 422) return "Please check the form fields and try again."; if (status === 429) return "Too many attempts. Please wait a moment and try again."; if (status >= 500) return "Something went wrong on our side. Please try again in a moment."; return friendlyMessage(backendMessage, defaultErrorMessage); }
 function networkErrorMessage() { return "We could not reach the server. Please check your connection and try again."; }
-function getStoredSession() {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(adminSessionKey);
-  if (!raw) return null;
-  try { return JSON.parse(raw) as AdminSession; } catch { window.localStorage.removeItem(adminSessionKey); return null; }
-}
+function getStoredSession() { if (typeof window === "undefined") return null; const raw = window.localStorage.getItem(adminSessionKey); if (!raw) return null; try { return JSON.parse(raw) as AdminSession; } catch { window.localStorage.removeItem(adminSessionKey); return null; } }
 function saveStoredSession(session: AdminSession) { window.localStorage.setItem(adminSessionKey, JSON.stringify(session)); window.dispatchEvent(new CustomEvent(adminSessionUpdatedEvent, { detail: session })); }
 function clearStoredSession() { if (typeof window === "undefined") return; window.localStorage.removeItem(adminSessionKey); window.dispatchEvent(new CustomEvent(adminSessionUpdatedEvent, { detail: null })); }
 function authHeader() { const session = getStoredSession(); return session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}; }
-
-async function parseResponse<T>(response: Response, path = ""): Promise<T> {
-  const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
-  if (!response.ok) throw new Error(apiErrorMessage(response, payload as ApiResponse<unknown> | null, path));
-  return ((payload?.data ?? payload) as T);
-}
-
-async function fetchApi(path: string, init?: RequestInit) {
-  const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
-  Object.entries(authHeader()).forEach(([key, value]) => headers.set(key, value));
-  return fetch(`${apiUrl}${path}`, { credentials: "include", ...init, headers });
-}
-
-async function refreshAdminSession() {
-  if (refreshPromise) return refreshPromise;
-  refreshPromise = (async () => {
-    const currentSession = getStoredSession();
-    if (!currentSession?.refreshToken) throw new Error("Admin session expired. Please sign in again.");
-    const response = await fetch(`${apiUrl}/auth/refresh`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: currentSession.refreshToken }) });
-    const tokens = await parseResponse<{ accessToken: string; refreshToken: string; sessionId?: string }>(response, "/auth/refresh");
-    const nextSession = { ...currentSession, id: tokens.sessionId ?? currentSession.id, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
-    saveStoredSession(nextSession);
-    return nextSession;
-  })().finally(() => { refreshPromise = null; });
-  return refreshPromise;
-}
-
-async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
-  let response: Response;
-  try { response = await fetchApi(path, init); } catch { throw new Error(networkErrorMessage()); }
-  const shouldRefresh = retry && response.status === 401 && !["/auth/admin/login", "/auth/login", "/auth/register", "/auth/refresh"].includes(path);
-  if (shouldRefresh) {
-    try { await refreshAdminSession(); } catch { clearStoredSession(); if (typeof window !== "undefined" && window.location.pathname !== "/login") window.location.assign("/login"); throw new Error("Admin session expired. Please sign in again."); }
-    return request<T>(path, init, false);
-  }
-  return parseResponse<T>(response, path);
-}
-
-async function listRequest<T>(path: string): Promise<ApiList<T>> {
-  const payload = await request<ApiResponse<T[]>>(path);
-  return { items: (payload.items ?? payload.data ?? []) as T[], total: payload.total ?? (payload.items?.length ?? payload.data?.length ?? 0) };
-}
+async function parseResponse<T>(response: Response, path = ""): Promise<T> { const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null; if (!response.ok) throw new Error(apiErrorMessage(response, payload as ApiResponse<unknown> | null, path)); return ((payload?.data ?? payload) as T); }
+async function fetchApi(path: string, init?: RequestInit) { const headers = new Headers(init?.headers); headers.set("Content-Type", "application/json"); Object.entries(authHeader()).forEach(([key, value]) => headers.set(key, value)); return fetch(`${apiUrl}${path}`, { credentials: "include", ...init, headers }); }
+async function refreshAdminSession() { if (refreshPromise) return refreshPromise; refreshPromise = (async () => { const currentSession = getStoredSession(); if (!currentSession?.refreshToken) throw new Error("Admin session expired. Please sign in again."); const response = await fetch(`${apiUrl}/auth/refresh`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: currentSession.refreshToken }) }); const tokens = await parseResponse<{ accessToken: string; refreshToken: string; sessionId?: string }>(response, "/auth/refresh"); const nextSession = { ...currentSession, id: tokens.sessionId ?? currentSession.id, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }; saveStoredSession(nextSession); return nextSession; })().finally(() => { refreshPromise = null; }); return refreshPromise; }
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> { let response: Response; try { response = await fetchApi(path, init); } catch { throw new Error(networkErrorMessage()); } const shouldRefresh = retry && response.status === 401 && !["/auth/admin/login", "/auth/login", "/auth/register", "/auth/refresh"].includes(path); if (shouldRefresh) { try { await refreshAdminSession(); } catch { clearStoredSession(); if (typeof window !== "undefined" && window.location.pathname !== "/login") window.location.assign("/login"); throw new Error("Admin session expired. Please sign in again."); } return request<T>(path, init, false); } return parseResponse<T>(response, path); }
+async function listRequest<T>(path: string): Promise<ApiList<T>> { const payload = await request<ApiResponse<T[]>>(path); return { items: (payload.items ?? payload.data ?? []) as T[], total: payload.total ?? (payload.items?.length ?? payload.data?.length ?? 0) }; }
 function idOf(item: { _id?: string; id?: string }) { return item.id ?? item._id ?? ""; }
 function formatDate(value?: string) { return value ? new Date(value).toLocaleString() : "Never"; }
 function formatCurrencyValue(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: value > 1000 ? 0 : 2 }).format(value); }
 function formatUser(user: unknown) { if (!user || typeof user !== "object") return "Unknown user"; const record = user as { name?: string; email?: string }; return record.name ?? record.email ?? "Unknown user"; }
 function userIdOf(user: unknown) { if (!user || typeof user !== "object") return undefined; return idOf(user as { _id?: string; id?: string }); }
-
 function mapMoneyRequest(item: Record<string, unknown>): MoneyRequest { return { id: idOf(item), user: formatUser(item.user), amount: Number(item.amount ?? 0), asset: (item.asset as MoneyRequest["asset"]) ?? "BTC", status: (item.status as MoneyRequest["status"]) ?? "pending", txHash: item.txHash as string | undefined, wallet: (item.destinationAddress as string | undefined) ?? (typeof item.wallet === "string" ? item.wallet : undefined), riskScore: Number(item.riskScore ?? 0), createdAt: formatDate(item.createdAt as string | undefined) }; }
 function mapUser(item: Record<string, unknown>): ManagedUser { const balances = Array.isArray(item.balances) ? item.balances as Array<{ available?: number }> : []; return { id: idOf(item), name: String(item.name ?? "Unnamed user"), email: String(item.email ?? ""), status: (item.status as ManagedUser["status"]) ?? "pending", kyc: (item.kyc as ManagedUser["kyc"]) ?? "not_submitted", balance: balances.reduce((total, balance) => total + Number(balance.available ?? 0), 0), invested: 0, referrals: 0, joinedAt: formatDate(item.createdAt as string | undefined), lastSeen: formatDate(item.lastLoginAt as string | undefined) }; }
 function mapKyc(item: Record<string, unknown>): KycReviewRecord { const user = item.user && typeof item.user === "object" ? item.user as Record<string, unknown> : {}; const files = Array.isArray(item.files) ? item.files.map(String) : []; return { id: idOf(item), userId: idOf(user), userName: String(user.name ?? "Unknown user"), userEmail: String(user.email ?? ""), userStatus: user.status as KycReviewRecord["userStatus"], status: (item.status as KycReviewRecord["status"]) ?? "pending", documentType: String(item.documentType ?? "Document"), documentNumber: String(item.documentNumber ?? ""), country: String(item.country ?? ""), files, submittedAt: formatDate((item.submittedAt ?? item.createdAt) as string | undefined), rejectionReason: item.rejectionReason as string | undefined }; }
@@ -142,23 +36,7 @@ function mapReferral(item: Record<string, unknown>): ReferralRow { return { id: 
 function mapTicket(item: Record<string, unknown>): SupportTicket { const messages = Array.isArray(item.messages) ? item.messages : []; return { id: idOf(item), socketId: idOf(item), subject: String(item.subject ?? "Support ticket"), user: formatUser(item.user), userId: userIdOf(item.user), priority: (item.priority as SupportTicket["priority"]) ?? "medium", status: (item.status as SupportTicket["status"]) ?? "open", lastMessageAt: formatDate((messages.at(-1) as { createdAt?: string } | undefined)?.createdAt ?? item.updatedAt as string | undefined), messages: messages.map((message) => { const record = message as { _id?: string; senderType?: "user" | "admin"; message?: string; createdAt?: string }; return { id: record._id ?? `${idOf(item)}-${record.createdAt ?? ""}`, senderType: record.senderType ?? "user", senderName: record.senderType === "admin" ? "Support Admin" : formatUser(item.user), message: record.message ?? "", createdAt: formatDate(record.createdAt) }; }) }; }
 function mapSecurityEvent(item: Record<string, unknown>): SecurityEvent { return { id: idOf(item), type: String(item.action ?? "audit"), actor: String(item.actorType ?? "admin"), ip: String(item.ip ?? "unknown"), severity: (item.severity as SecurityEvent["severity"]) ?? "low", createdAt: formatDate(item.createdAt as string | undefined) }; }
 function mapActivity(item: Record<string, unknown>): Activity { const severity = (item.severity as SecurityEvent["severity"]) ?? "low"; return { id: idOf(item), actor: String(item.actorType ?? "admin"), action: String(item.action ?? "updated platform"), target: String(item.resource ?? "system"), ip: String(item.ip ?? "unknown"), createdAt: formatDate(item.createdAt as string | undefined), tone: severity === "high" || severity === "critical" ? "danger" : severity === "medium" ? "warning" : "success" }; }
-
-function mapDailySeries(items: Array<{ _id?: { day?: string; type?: string }; total?: number }>): ChartPoint[] {
-  const byDay = new Map<string, ChartPoint>();
-  for (const item of items) {
-    const day = String(item._id?.day ?? "");
-    if (!day) continue;
-    const point = byDay.get(day) ?? { label: day.slice(5), deposits: 0, withdrawals: 0, revenue: 0, profit: 0, users: 0 };
-    const total = Number(item.total ?? 0);
-    const type = item._id?.type;
-    if (type === "deposit") point.deposits += Math.abs(total);
-    if (type === "withdrawal") point.withdrawals += Math.abs(total);
-    if (type === "profit") point.profit += Math.abs(total);
-    if (["deposit", "profit", "investment"].includes(type ?? "")) point.revenue += Math.abs(total);
-    byDay.set(day, point);
-  }
-  return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, point]) => point);
-}
+function mapDailySeries(items: Array<{ _id?: { day?: string; type?: string }; total?: number }>): ChartPoint[] { const byDay = new Map<string, ChartPoint>(); for (const item of items) { const day = String(item._id?.day ?? ""); if (!day) continue; const point = byDay.get(day) ?? { label: day.slice(5), deposits: 0, withdrawals: 0, revenue: 0, profit: 0, users: 0 }; const total = Number(item.total ?? 0); const type = item._id?.type; if (type === "deposit") point.deposits += Math.abs(total); if (type === "withdrawal") point.withdrawals += Math.abs(total); if (type === "profit") point.profit += Math.abs(total); if (["deposit", "profit", "investment"].includes(type ?? "")) point.revenue += Math.abs(total); if (type === "user") point.users += total; byDay.set(day, point); } return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, point]) => point); }
 
 export const adminApi = {
   async login(input: z.infer<typeof loginSchema>): Promise<AdminSession> { return request<AdminSession>("/auth/admin/login", { method: "POST", body: JSON.stringify(loginSchema.parse(input)) }); },
@@ -166,25 +44,7 @@ export const adminApi = {
   me() { return request<Record<string, unknown>>("/admin/me"); },
   async updateMyProfile(input: { name?: string; email?: string }) { const profile = await request<Record<string, unknown>>("/admin/me", { method: "PATCH", body: JSON.stringify(input) }); const current = getStoredSession(); if (current) saveStoredSession({ ...current, name: String(profile.name ?? current.name ?? ""), email: String(profile.email ?? current.email ?? "") }); return profile; },
   async changePassword(input: { currentPassword: string; newPassword: string }) { await request("/auth/change-password", { method: "POST", body: JSON.stringify(input) }); clearStoredSession(); },
-  async dashboard(): Promise<{ metrics: DashboardMetric[]; chartPoints: ChartPoint[]; activities: Activity[] }> {
-    const [overview, daily, logs] = await Promise.all([
-      request<{ totalUsers: number; totalDeposits: number; totalWithdrawals: number; activeInvestments: number; pendingApprovals: number; revenue: number }>("/analytics/overview"),
-      request<Array<{ _id?: { day?: string; type?: string }; total?: number }>>("/analytics/daily?days=7"),
-      listRequest<Record<string, unknown>>("/admin/logs?limit=8")
-    ]);
-    return {
-      metrics: [
-        { label: "Total Users", value: overview.totalUsers, change: 0 },
-        { label: "Total Deposits", value: overview.totalDeposits, change: 0, currency: "USD" },
-        { label: "Total Withdrawals", value: overview.totalWithdrawals, change: 0, currency: "USD" },
-        { label: "Active Investments", value: overview.activeInvestments, change: 0 },
-        { label: "Pending Approvals", value: overview.pendingApprovals, change: 0 },
-        { label: "Revenue", value: overview.revenue, change: 0, currency: "USD" }
-      ],
-      chartPoints: mapDailySeries(daily),
-      activities: logs.items.map(mapActivity)
-    };
-  },
+  async dashboard(): Promise<{ metrics: DashboardMetric[]; chartPoints: ChartPoint[]; activities: Activity[] }> { const [overview, daily, logs] = await Promise.all([request<{ totalUsers: number; totalDeposits: number; totalWithdrawals: number; activeInvestments: number; pendingApprovals: number; revenue: number }>("/analytics/overview"), request<Array<{ _id?: { day?: string; type?: string }; total?: number }>>("/analytics/daily?days=7"), listRequest<Record<string, unknown>>("/admin/logs?limit=8")]); return { metrics: [{ label: "Total Users", value: overview.totalUsers, change: 0 }, { label: "Total Deposits", value: overview.totalDeposits, change: 0, currency: "USD" }, { label: "Total Withdrawals", value: overview.totalWithdrawals, change: 0, currency: "USD" }, { label: "Active Investments", value: overview.activeInvestments, change: 0 }, { label: "Pending Approvals", value: overview.pendingApprovals, change: 0 }, { label: "Revenue", value: overview.revenue, change: 0, currency: "USD" }], chartPoints: mapDailySeries(daily), activities: logs.items.map(mapActivity) }; },
   async users() { const result = await listRequest<Record<string, unknown>>("/users?limit=100"); return result.items.map(mapUser); },
   async kycQueue() { const result = await listRequest<Record<string, unknown>>("/users/kyc?limit=100"); return result.items.map(mapKyc); },
   reviewKyc(id: string, input: { status: "approved" | "rejected"; rejectionReason?: string }) { return request(`/users/kyc/${id}/review`, { method: "PATCH", body: JSON.stringify(input) }); },
