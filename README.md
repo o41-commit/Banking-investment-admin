@@ -1,37 +1,52 @@
-# Mobile Saving Bank Admin
+# Banking & Investment Admin
 
-Premium Next.js admin dashboard for crypto investment operations.
+> An administration dashboard project for managing a digital banking and investment product.
 
-## Stack
+## Overview
 
-- Next.js App Router
-- React + TypeScript
-- Tailwind CSS
-- Framer Motion
-- Recharts
-- Socket.IO client
+This repository contains the Banking & Investment Admin project in the DevNado portfolio. The README is intended to help developers quickly understand the project's purpose and get oriented in the codebase.
 
-## Run
+## Highlights
+
+- Project-specific interface or service for the workflow described above.
+- Structured code intended to support ongoing improvements.
+- Development setup based on the tools and scripts configured in this repository.
+
+## Getting started
+
+### Prerequisites
+
+- Git
+- Node.js LTS and npm, if the project uses a Node.js toolchain
+- Any external services or database required by the application
+
+### Install
 
 ```bash
+git clone https://github.com/o41-commit/Banking-investment-admin.git
+cd Banking-investment-admin
 npm install
-npm run dev
 ```
 
-The app reads:
+Run the command defined by the project scripts in `package.json`. Frontend projects commonly use `npm run dev`; backend projects may require environment variables and a database connection first.
 
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
-```
+## Environment and security
 
-If those variables are not set, the UI uses typed demo data so every admin screen remains usable while the backend is being configured.
+1. Review the project's configuration and available environment example files.
+2. Set required environment variables locally.
+3. Do not commit secrets, API keys, access tokens, or production credentials.
+4. Validate the relevant user flows before deploying changes.
 
-Live support chat uses `NEXT_PUBLIC_SOCKET_URL` and the admin access token returned by `/api/auth/admin/login`.
+## Development
 
-## Verify
+Keep changes small and maintainable. Update this documentation when setup commands, integrations, or important behavior changes. Refer to the source files and `package.json` for the exact stack and scripts used by this repository.
 
-```bash
-npm run typecheck
-npm run build
-```
+## Links
+
+- **Maintainer:** DevNado
+- **GitHub:** https://github.com/o41-commit
+- **Portfolio:** https://dev-nado.vercel.app/
+
+---
+
+<p align="center">Built with care by <strong>DevNado</strong> ✦</p>
